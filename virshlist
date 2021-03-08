@@ -1,0 +1,27 @@
+#! /bin/bash
+
+if test "`find nmapout.txt -mmin +10 2> /dev/null`"
+then
+	rm nmapout.txt 2> /dev/null
+fi
+
+if [ ! -f nmapout.txt ]; then
+    echo "Nmap had to refresh . It may take little longer"
+    nmap -sn `hostname -I | tr -d " "`/24 > nmapout.txt 2> /dev/null
+fi 
+
+cat nmapout.txt | awk ' function out() { if (state=="up") { printf "%s %s %s\n",ip,mac,name; ip=""; mac=""; name=""; state="" } } /Nmap scan report/ { out(); name=$5; ip = substr($6,2,length($6)-2); if (ip=="") { ip=name; name="" } } /Host is/ { state=$3 } /MAC Address/ { mac=$3 } END { out() }' > nmapout2.txt 
+
+allvms=`virsh list | tr -s " " | cut -d" " -f 3 | grep -v '\-\-\-' | grep -v "Name" | grep -v "Domain-0"`
+
+
+COUNTER=0
+for each in $allvms
+do
+	mac=`virsh domiflist $each | tail -n 2 | head -n 1  | tr -s " "  | cut -d" " -f6`
+	mac=${mac^^}
+	ip=`cat nmapout2.txt | grep $mac | cut -d" " -f1 | xargs`
+	COUNTER=$((COUNTER + 1))
+	echo -e "$COUNTER\t$mac\t$each\t$ip"
+done
+
